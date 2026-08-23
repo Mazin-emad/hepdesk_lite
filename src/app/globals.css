@@ -1,0 +1,144 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Dispatch Counter - Slate Fog Light Theme */
+    --background: #EDEFF0;
+    --foreground: #1C1E1F;
+    
+    --card: #F5F5F1;
+    --card-foreground: #1C1E1F;
+    
+    --popover: #F5F5F1;
+    --popover-foreground: #1C1E1F;
+    
+    --primary: #C1791E; /* Dispatch Ochre */
+    --primary-foreground: #FFFFFF;
+    
+    --secondary: #8C3A32; /* Oxblood */
+    --secondary-foreground: #FFFFFF;
+    
+    --muted: #E1E2DD;
+    --muted-foreground: #5C5E60;
+    
+    --accent: #E8E8E3;
+    --accent-foreground: #1C1E1F;
+    
+    --destructive: #8C3A32;
+    --destructive-foreground: #FFFFFF;
+    
+    --border: #D3D2CA;
+    --input: #D3D2CA;
+    --ring: #C1791E;
+    
+    --radius: 0.375rem;
+  }
+
+  .dark {
+    /* Dispatch Counter - Graphite Umber Dark Theme */
+    --background: #1E1A16;
+    --foreground: #EDEAE2;
+    
+    --card: #241F19;
+    --card-foreground: #EDEAE2;
+    
+    --popover: #241F19;
+    --popover-foreground: #EDEAE2;
+    
+    --primary: #E3A23C; /* Signal Gold */
+    --primary-foreground: #1E1A16;
+    
+    --secondary: #B85B4E; /* Lifted Oxblood */
+    --secondary-foreground: #1E1A16;
+    
+    --muted: #2A241E;
+    --muted-foreground: #9E9A93;
+    
+    --accent: #332B23;
+    --accent-foreground: #EDEAE2;
+    
+    --destructive: #B85B4E;
+    --destructive-foreground: #1E1A16;
+    
+    --border: #3A332B;
+    --input: #3A332B;
+    --ring: #E3A23C;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased font-sans;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight text-foreground;
+  }
+}
+
+/* Signature Claim Stub styling */
+.ticket-claim-stub {
+  position: relative;
+  background-color: var(--card);
+}
+
+/* Notches on the perforation divider */
+.stub-notch-top {
+  position: absolute;
+  top: -1px;
+  width: 12px;
+  height: 6px;
+  background-color: var(--background);
+  border-bottom-left-radius: 6px;
+  border-bottom-right-radius: 6px;
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+.stub-notch-bottom {
+  position: absolute;
+  bottom: -1px;
+  width: 12px;
+  height: 6px;
+  background-color: var(--background);
+  border-top-left-radius: 6px;
+  border-top-right-radius: 6px;
+  border-top: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  transform: translateX(-50%);
+  z-index: 10;
+}
+
+/* Stamped Ticket ID in physical work-order stamp style */
+.dispatch-stamp {
+  font-family: var(--font-ibm-plex-mono), monospace;
+  letter-spacing: 0.08em;
+  font-variant-numeric: tabular-nums;
+  transform: rotate(-2deg);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px dashed var(--secondary);
+  color: var(--secondary);
+  background-color: rgba(140, 58, 50, 0.06);
+  padding: 0.15rem 0.5rem;
+  border-radius: 0.125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.dark .dispatch-stamp {
+  border-color: var(--secondary);
+  color: var(--secondary);
+  background-color: rgba(184, 91, 78, 0.1);
+}
