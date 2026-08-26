@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { AppProviders } from "@/components/providers";
+import { AppFooter } from "@/components/app-footer";
 
 const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
@@ -41,7 +42,12 @@ export default function RootLayout({
       className={`${spaceGrotesk.variable} ${ibmPlexSans.variable} ${ibmPlexMono.variable}`}
     >
       <body className="min-h-screen bg-background text-foreground font-sans antialiased selection:bg-primary/20">
-        <AppProviders>{children}</AppProviders>
+        <AppProviders>
+          <div className="flex min-h-screen flex-col">
+            <div className="flex-1">{children}</div>
+            <AppFooter />
+          </div>
+        </AppProviders>
       </body>
     </html>
   );
