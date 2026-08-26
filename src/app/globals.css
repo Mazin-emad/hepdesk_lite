@@ -142,3 +142,22 @@
   color: var(--secondary);
   background-color: rgba(184, 91, 78, 0.1);
 }
+
+/* Landing hero: faint drafting-table grid fading out from the top */
+.hero-grid {
+  background-image:
+    linear-gradient(to right, var(--border) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border) 1px, transparent 1px);
+  background-size: 42px 42px;
+  -webkit-mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 35%, transparent 78%);
+  mask-image: radial-gradient(ellipse 90% 80% at 50% 0%, black 35%, transparent 78%);
+}
+
+/* Warm dispatch-counter glow rising behind the headline */
+.hero-glow {
+  background: radial-gradient(ellipse 60% 48% at 50% -5%, rgba(193, 121, 30, 0.13), transparent 70%);
+}
+
+.dark .hero-glow {
+  background: radial-gradient(ellipse 60% 48% at 50% -5%, rgba(227, 162, 60, 0.09), transparent 70%);
+}
