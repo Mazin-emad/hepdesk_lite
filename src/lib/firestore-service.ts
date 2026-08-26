@@ -1,4 +1,4 @@
-import {
+﻿import {
   collection,
   doc,
   getDoc,
@@ -12,188 +12,83 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import {
-  Ticket,
-  UserProfile,
   AppNotification,
-  UserRole,
-  TicketStatus,
-  TicketFilterState,
+  Ticket,
   TicketComment,
+  TicketFilterState,
+  TicketStatus,
+  UserProfile,
+  UserRole,
 } from "./types";
-import {
-  MOCK_TICKETS,
-  MOCK_USERS,
-  MOCK_NOTIFICATIONS,
-} from "./mock-data";
 import { createStateHistoryEntry, isValidTransition } from "./workflow";
 
-const isDemo = () => {
-  if (typeof window !== "undefined") {
-    const demoSetting = localStorage.getItem("helpdesk_demo_mode");
-    if (demoSetting !== null) return demoSetting === "true";
-  }
-  return (
-    process.env.NEXT_PUBLIC_DEMO_MODE === "true" ||
-    !process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
-    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID === "helpdesk-lite-dev"
-  );
-};
-
-// Local storage keys for demo persistence
-const DEMO_TICKETS_KEY = "helpdesk_demo_tickets";
-const DEMO_USERS_KEY = "helpdesk_demo_users";
-const DEMO_NOTIFS_KEY = "helpdesk_demo_notifications";
-
-function getLocalDemoData<T>(key: string, defaultData: T[]): T[] {
-  if (typeof window === "undefined") return defaultData;
-  const stored = localStorage.getItem(key);
-  if (!stored) {
-    localStorage.setItem(key, JSON.stringify(defaultData));
-    return defaultData;
-  }
-  try {
-    return JSON.parse(stored);
-  } catch {
-    return defaultData;
-  }
-}
-
-function setLocalDemoData<T>(key: string, data: T[]): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(key, JSON.stringify(data));
-}
-
-// ----------------------------------------------------
-// USER SERVICES
-// ----------------------------------------------------
-
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  if (isDemo()) {
-    const users = getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
-    return users.find((u) => u.uid === uid) || null;
-  }
-
   try {
     const userDocRef = doc(db, "users", uid);
     const snap = await getDoc(userDocRef);
-    if (snap.exists()) {
-      return snap.data() as UserProfile;
-    }
+    return snap.exists() ? (snap.data() as UserProfile) : null;
+  } catch (error) {
+    console.warn("Firestore getUserProfile failed:", error);
     return null;
-  } catch (err) {
-    console.warn("Firestore getUserProfile fallback to mock:", err);
-    const users = getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
-    return users.find((u) => u.uid === uid) || null;
   }
 }
 
 export async function syncUserProfile(
   user: { uid: string; name: string; email: string; role?: UserRole }
 ): Promise<UserProfile> {
-  const defaultRole: UserRole = user.role || "employee";
-
-  if (isDemo()) {
-    const users = getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
-    const existingIndex = users.findIndex((u) => u.uid === user.uid);
-    let profile: UserProfile;
-    if (existingIndex >= 0) {
-      profile = {
-        ...users[existingIndex],
-        name: user.name || users[existingIndex].name,
-        email: user.email || users[existingIndex].email,
-        role: user.role || users[existingIndex].role,
-      };
-      users[existingIndex] = profile;
-    } else {
-      profile = {
-        uid: user.uid,
-        name: user.name,
-        email: user.email,
-        role: defaultRole,
-        createdAt: new Date().toISOString(),
-      };
-      users.push(profile);
-    }
-    setLocalDemoData(DEMO_USERS_KEY, users);
-    return profile;
-  }
+  const role = user.role || "employee";
+  const profile: UserProfile = {
+    uid: user.uid,
+    name: user.name || "User",
+    email: user.email || "",
+    role,
+    createdAt: new Date().toISOString(),
+  };
 
   try {
     const userDocRef = doc(db, "users", user.uid);
     const snap = await getDoc(userDocRef);
     if (snap.exists()) {
       const existing = snap.data() as UserProfile;
-      const updated: UserProfile = {
+      const merged: UserProfile = {
         ...existing,
+        uid: user.uid,
         name: user.name || existing.name,
         email: user.email || existing.email,
         role: user.role || existing.role,
       };
-      await setDoc(userDocRef, updated, { merge: true });
-      return updated;
-    } else {
-      const newProfile: UserProfile = {
-        uid: user.uid,
-        name: user.name,
-        email: user.email,
-        role: defaultRole,
-        createdAt: new Date().toISOString(),
-      };
-      await setDoc(userDocRef, newProfile);
-      return newProfile;
+      await setDoc(userDocRef, merged, { merge: true });
+      return merged;
     }
-  } catch (err) {
-    console.warn("Firestore syncUserProfile error, fallback:", err);
-    return {
-      uid: user.uid,
-      name: user.name,
-      email: user.email,
-      role: defaultRole,
-      createdAt: new Date().toISOString(),
-    };
+
+    await setDoc(userDocRef, profile);
+    return profile;
+  } catch (error) {
+    console.warn("Firestore syncUserProfile failed:", error);
+    return profile;
   }
 }
 
 export async function updateUserRole(uid: string, role: UserRole): Promise<void> {
-  if (isDemo()) {
-    const users = getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
-    const updated = users.map((u) => (u.uid === uid ? { ...u, role } : u));
-    setLocalDemoData(DEMO_USERS_KEY, updated);
-    return;
-  }
-
   try {
     const userDocRef = doc(db, "users", uid);
     await updateDoc(userDocRef, { role });
-  } catch (err) {
-    console.warn("Firestore updateUserRole error, updating demo data:", err);
-    const users = getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
-    const updated = users.map((u) => (u.uid === uid ? { ...u, role } : u));
-    setLocalDemoData(DEMO_USERS_KEY, updated);
+  } catch (error) {
+    console.warn("Firestore updateUserRole failed:", error);
+    throw error;
   }
 }
 
 export async function getAllUsers(): Promise<UserProfile[]> {
-  if (isDemo()) {
-    return getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
-  }
-
   try {
     const usersCol = collection(db, "users");
     const snap = await getDocs(usersCol);
-    if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as UserProfile);
-    }
-    return MOCK_USERS;
-  } catch (err) {
-    console.warn("Firestore getAllUsers error, fallback:", err);
-    return getLocalDemoData<UserProfile>(DEMO_USERS_KEY, MOCK_USERS);
+    return snap.docs.map((docSnap) => docSnap.data() as UserProfile);
+  } catch (error) {
+    console.warn("Firestore getAllUsers failed:", error);
+    return [];
   }
 }
-
-// ----------------------------------------------------
-// TICKET SERVICES
-// ----------------------------------------------------
 
 export async function createTicket(data: {
   title: string;
@@ -232,23 +127,13 @@ export async function createTicket(data: {
     comments: [],
   };
 
-  if (isDemo()) {
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    tickets.unshift(newTicket);
-    setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-    return newTicket;
-  }
-
   try {
     const ticketDocRef = doc(db, "tickets", ticketId);
     await setDoc(ticketDocRef, newTicket);
     return newTicket;
-  } catch (err) {
-    console.warn("Firestore createTicket error, fallback to demo store:", err);
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    tickets.unshift(newTicket);
-    setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-    return newTicket;
+  } catch (error) {
+    console.warn("Firestore createTicket failed:", error);
+    throw error;
   }
 }
 
@@ -256,93 +141,68 @@ export async function getTickets(
   filter?: Partial<TicketFilterState>,
   user?: { uid: string; role: UserRole }
 ): Promise<Ticket[]> {
-  let tickets: Ticket[] = [];
+  try {
+    const ticketsCol = collection(db, "tickets");
+    let q = query(ticketsCol, orderBy("createdAt", "desc"));
 
-  if (isDemo()) {
-    tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-  } else {
-    try {
-      const ticketsCol = collection(db, "tickets");
-      let q = query(ticketsCol, orderBy("createdAt", "desc"));
-
-      if (user?.role === "employee") {
-        q = query(ticketsCol, where("requesterId", "==", user.uid), orderBy("createdAt", "desc"));
-      }
-
-      const snap = await getDocs(q);
-      if (!snap.empty) {
-        tickets = snap.docs.map((d) => d.data() as Ticket);
-      } else {
-        tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-      }
-    } catch (err) {
-      console.warn("Firestore getTickets error, fallback to demo store:", err);
-      tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
+    if (user?.role === "employee") {
+      q = query(ticketsCol, where("requesterId", "==", user.uid), orderBy("createdAt", "desc"));
     }
-  }
 
-  // Role filtering boundary
-  if (user?.role === "employee") {
-    tickets = tickets.filter((t) => t.requesterId === user.uid);
-  }
+    const snap = await getDocs(q);
+    let tickets = snap.docs.map((docSnap) => ({ ...(docSnap.data() as Ticket), id: docSnap.id }));
 
-  // Tab view filtering
-  if (filter?.viewTab === "assigned_to_me" && user) {
-    tickets = tickets.filter((t) => t.ownerId === user.uid);
-  } else if (filter?.viewTab === "unassigned") {
-    tickets = tickets.filter((t) => !t.ownerId);
-  } else if (filter?.viewTab === "my_tickets" && user) {
-    tickets = tickets.filter((t) => t.requesterId === user.uid);
-  }
+    if (user?.role === "employee") {
+      tickets = tickets.filter((ticket) => ticket.requesterId === user.uid);
+    }
 
-  // Status filtering
-  if (filter?.status && filter.status !== "All") {
-    tickets = tickets.filter((t) => t.status === filter.status);
-  }
+    if (filter?.viewTab === "assigned_to_me" && user) {
+      tickets = tickets.filter((ticket) => ticket.ownerId === user.uid);
+    } else if (filter?.viewTab === "unassigned") {
+      tickets = tickets.filter((ticket) => !ticket.ownerId);
+    } else if (filter?.viewTab === "my_tickets" && user) {
+      tickets = tickets.filter((ticket) => ticket.requesterId === user.uid);
+    }
 
-  // Priority filtering
-  if (filter?.priority && filter.priority !== "All") {
-    tickets = tickets.filter((t) => t.priority === filter.priority);
-  }
+    if (filter?.status && filter.status !== "All") {
+      tickets = tickets.filter((ticket) => ticket.status === filter.status);
+    }
 
-  // Category filtering
-  if (filter?.category && filter.category !== "All") {
-    tickets = tickets.filter((t) => t.category === filter.category);
-  }
+    if (filter?.priority && filter.priority !== "All") {
+      tickets = tickets.filter((ticket) => ticket.priority === filter.priority);
+    }
 
-  // Search keyword filtering
-  if (filter?.search && filter.search.trim() !== "") {
-    const s = filter.search.toLowerCase().trim();
-    tickets = tickets.filter(
-      (t) =>
-        t.title.toLowerCase().includes(s) ||
-        t.description.toLowerCase().includes(s) ||
-        t.id.toLowerCase().includes(s) ||
-        t.requesterName.toLowerCase().includes(s) ||
-        (t.ownerName && t.ownerName.toLowerCase().includes(s))
-    );
-  }
+    if (filter?.category && filter.category !== "All") {
+      tickets = tickets.filter((ticket) => ticket.category === filter.category);
+    }
 
-  return tickets;
+    if (filter?.search && filter.search.trim() !== "") {
+      const search = filter.search.toLowerCase().trim();
+      tickets = tickets.filter(
+        (ticket) =>
+          ticket.title.toLowerCase().includes(search) ||
+          ticket.description.toLowerCase().includes(search) ||
+          ticket.id.toLowerCase().includes(search) ||
+          ticket.requesterName.toLowerCase().includes(search) ||
+          (ticket.ownerName && ticket.ownerName.toLowerCase().includes(search))
+      );
+    }
+
+    return tickets;
+  } catch (error) {
+    console.warn("Firestore getTickets failed:", error);
+    return [];
+  }
 }
 
 export async function getTicketById(ticketId: string): Promise<Ticket | null> {
-  if (isDemo()) {
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    return tickets.find((t) => t.id === ticketId) || null;
-  }
-
   try {
     const ticketDocRef = doc(db, "tickets", ticketId);
     const snap = await getDoc(ticketDocRef);
-    if (snap.exists()) {
-      return snap.data() as Ticket;
-    }
+    return snap.exists() ? ({ ...(snap.data() as Ticket), id: snap.id } as Ticket) : null;
+  } catch (error) {
+    console.warn("Firestore getTicketById failed:", error);
     return null;
-  } catch (err) {
-    console.warn("Firestore getTicketById error, fallback to demo store:", err);
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    return tickets.find((t) => t.id === ticketId) || null;
   }
 }
 
@@ -371,30 +231,18 @@ export async function updateTicketStatus(
     stateHistory: [...(ticket.stateHistory || []), transition],
   };
 
-  if (isDemo()) {
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    const index = tickets.findIndex((t) => t.id === ticketId);
-    if (index >= 0) tickets[index] = updatedTicket;
-    setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-  } else {
-    try {
-      const ticketDocRef = doc(db, "tickets", ticketId);
-      await updateDoc(ticketDocRef, {
-        status: newStatus,
-        updatedAt: now,
-        stateHistory: arrayUnion(transition),
-      });
-    } catch (err) {
-      console.warn("Firestore updateTicketStatus error, fallback:", err);
-      const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-      const index = tickets.findIndex((t) => t.id === ticketId);
-      if (index >= 0) tickets[index] = updatedTicket;
-      setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-    }
+  try {
+    const ticketDocRef = doc(db, "tickets", ticketId);
+    await updateDoc(ticketDocRef, {
+      status: newStatus,
+      updatedAt: now,
+      stateHistory: arrayUnion(transition),
+    });
+  } catch (error) {
+    console.warn("Firestore updateTicketStatus failed:", error);
+    throw error;
   }
 
-  // Trigger Notifications:
-  // 1. If resolved -> notify requester
   if (newStatus === "Resolved" && ticket.requesterId !== user.uid) {
     await createNotification({
       userId: ticket.requesterId,
@@ -404,7 +252,6 @@ export async function updateTicketStatus(
       message: `Your ticket ${ticket.id} has been marked as Resolved by ${user.name}.`,
     });
   } else if (ticket.requesterId !== user.uid) {
-    // 2. If status changed -> notify requester
     await createNotification({
       userId: ticket.requesterId,
       ticketId: ticket.id,
@@ -431,7 +278,6 @@ export async function assignTicket(
   const now = new Date().toISOString();
   let nextStatus = ticket.status;
 
-  // If newly created and unassigned, auto-advance to "Assigned" on first assignment
   if (ticket.status === "New" && ownerId) {
     nextStatus = "Assigned";
   }
@@ -451,32 +297,20 @@ export async function assignTicket(
     stateHistory: [...(ticket.stateHistory || []), transition],
   };
 
-  if (isDemo()) {
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    const index = tickets.findIndex((t) => t.id === ticketId);
-    if (index >= 0) tickets[index] = updatedTicket;
-    setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-  } else {
-    try {
-      const ticketDocRef = doc(db, "tickets", ticketId);
-      await updateDoc(ticketDocRef, {
-        ownerId,
-        ownerName,
-        status: nextStatus,
-        updatedAt: now,
-        stateHistory: arrayUnion(transition),
-      });
-    } catch (err) {
-      console.warn("Firestore assignTicket error, fallback:", err);
-      const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-      const index = tickets.findIndex((t) => t.id === ticketId);
-      if (index >= 0) tickets[index] = updatedTicket;
-      setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-    }
+  try {
+    const ticketDocRef = doc(db, "tickets", ticketId);
+    await updateDoc(ticketDocRef, {
+      ownerId,
+      ownerName,
+      status: nextStatus,
+      updatedAt: now,
+      stateHistory: arrayUnion(transition),
+    });
+  } catch (error) {
+    console.warn("Firestore assignTicket failed:", error);
+    throw error;
   }
 
-  // Trigger Notifications:
-  // 1. Notify assigned owner (if not the one who assigned)
   if (ownerId && ownerId !== user.uid) {
     await createNotification({
       userId: ownerId,
@@ -487,7 +321,6 @@ export async function assignTicket(
     });
   }
 
-  // 2. Notify requester of assignment
   if (ticket.requesterId !== user.uid) {
     await createNotification({
       userId: ticket.requesterId,
@@ -519,17 +352,6 @@ export async function addTicketComment(
     isInternal,
   };
 
-  if (isDemo()) {
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    const index = tickets.findIndex((t) => t.id === ticketId);
-    if (index >= 0) {
-      tickets[index].comments = [...(tickets[index].comments || []), comment];
-      tickets[index].updatedAt = new Date().toISOString();
-      setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-    }
-    return comment;
-  }
-
   try {
     const ticketDocRef = doc(db, "tickets", ticketId);
     await updateDoc(ticketDocRef, {
@@ -537,22 +359,11 @@ export async function addTicketComment(
       updatedAt: new Date().toISOString(),
     });
     return comment;
-  } catch (err) {
-    console.warn("Firestore addTicketComment error, fallback:", err);
-    const tickets = getLocalDemoData<Ticket>(DEMO_TICKETS_KEY, MOCK_TICKETS);
-    const index = tickets.findIndex((t) => t.id === ticketId);
-    if (index >= 0) {
-      tickets[index].comments = [...(tickets[index].comments || []), comment];
-      tickets[index].updatedAt = new Date().toISOString();
-      setLocalDemoData(DEMO_TICKETS_KEY, tickets);
-    }
-    return comment;
+  } catch (error) {
+    console.warn("Firestore addTicketComment failed:", error);
+    throw error;
   }
 }
-
-// ----------------------------------------------------
-// NOTIFICATION SERVICES
-// ----------------------------------------------------
 
 export async function createNotification(
   data: Omit<AppNotification, "id" | "createdAt" | "read">
@@ -565,94 +376,52 @@ export async function createNotification(
     createdAt: new Date().toISOString(),
   };
 
-  if (isDemo()) {
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    notifs.unshift(notification);
-    setLocalDemoData(DEMO_NOTIFS_KEY, notifs);
-    return notification;
-  }
-
   try {
     const notifDocRef = doc(db, "notifications", notifId);
     await setDoc(notifDocRef, notification);
     return notification;
-  } catch (err) {
-    console.warn("Firestore createNotification error, fallback:", err);
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    notifs.unshift(notification);
-    setLocalDemoData(DEMO_NOTIFS_KEY, notifs);
-    return notification;
+  } catch (error) {
+    console.warn("Firestore createNotification failed:", error);
+    throw error;
   }
 }
 
 export async function getNotifications(userId: string): Promise<AppNotification[]> {
-  if (isDemo()) {
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    return notifs.filter((n) => n.userId === userId);
-  }
-
   try {
-    const notifsCol = collection(db, "notifications");
-    const q = query(notifsCol, where("userId", "==", userId), orderBy("createdAt", "desc"));
+    const notificationsCol = collection(db, "notifications");
+    const q = query(notificationsCol, where("userId", "==", userId), orderBy("createdAt", "desc"));
     const snap = await getDocs(q);
-    if (!snap.empty) {
-      return snap.docs.map((d) => d.data() as AppNotification);
-    }
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    return notifs.filter((n) => n.userId === userId);
-  } catch (err) {
-    console.warn("Firestore getNotifications error, fallback:", err);
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    return notifs.filter((n) => n.userId === userId);
+    return snap.docs.map((docSnap) => docSnap.data() as AppNotification);
+  } catch (error) {
+    console.warn("Firestore getNotifications failed:", error);
+    return [];
   }
 }
 
 export async function markNotificationAsRead(notificationId: string): Promise<void> {
-  if (isDemo()) {
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    const updated = notifs.map((n) => (n.id === notificationId ? { ...n, read: true } : n));
-    setLocalDemoData(DEMO_NOTIFS_KEY, updated);
-    return;
-  }
-
   try {
     const notifDocRef = doc(db, "notifications", notificationId);
     await updateDoc(notifDocRef, { read: true });
-  } catch (err) {
-    console.warn("Firestore markNotificationAsRead error, fallback:", err);
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    const updated = notifs.map((n) => (n.id === notificationId ? { ...n, read: true } : n));
-    setLocalDemoData(DEMO_NOTIFS_KEY, updated);
+  } catch (error) {
+    console.warn("Firestore markNotificationAsRead failed:", error);
+    throw error;
   }
 }
 
 export async function markAllNotificationsAsRead(userId: string): Promise<void> {
-  if (isDemo()) {
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    const updated = notifs.map((n) => (n.userId === userId ? { ...n, read: true } : n));
-    setLocalDemoData(DEMO_NOTIFS_KEY, updated);
-    return;
-  }
-
   try {
-    const userNotifs = await getNotifications(userId);
-    for (const n of userNotifs) {
-      if (!n.read) {
-        const notifDocRef = doc(db, "notifications", n.id);
-        await updateDoc(notifDocRef, { read: true });
+    const userNotifications = await getNotifications(userId);
+    for (const notification of userNotifications) {
+      if (!notification.read) {
+        await markNotificationAsRead(notification.id);
       }
     }
-  } catch (err) {
-    console.warn("Firestore markAllNotificationsAsRead error, fallback:", err);
-    const notifs = getLocalDemoData<AppNotification>(DEMO_NOTIFS_KEY, MOCK_NOTIFICATIONS);
-    const updated = notifs.map((n) => (n.userId === userId ? { ...n, read: true } : n));
-    setLocalDemoData(DEMO_NOTIFS_KEY, updated);
+  } catch (error) {
+    console.warn("Firestore markAllNotificationsAsRead failed:", error);
+    throw error;
   }
 }
 
 export function resetDemoDataToDefaults(): void {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(DEMO_TICKETS_KEY, JSON.stringify(MOCK_TICKETS));
-  localStorage.setItem(DEMO_USERS_KEY, JSON.stringify(MOCK_USERS));
-  localStorage.setItem(DEMO_NOTIFS_KEY, JSON.stringify(MOCK_NOTIFICATIONS));
+  return;
 }

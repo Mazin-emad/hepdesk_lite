@@ -24,6 +24,7 @@ yarn-error.log*
 
 # local env files
 .env*.local
+**/helpdesk-lite-e7ceb-firebase-adminsdk-fbsvc-4d2764960e.json
 
 # vercel
 .vercel
