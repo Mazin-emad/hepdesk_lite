@@ -110,7 +110,7 @@ function FeatureCard({
 
 export default function HomePage() {
   return (
-    <div className="flex min-h-screen flex-col bg-background">
+    <div className="flex h-full flex-col bg-background">
       <Navbar />
 
       <main className="flex-1">

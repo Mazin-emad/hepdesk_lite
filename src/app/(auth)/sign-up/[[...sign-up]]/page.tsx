@@ -1,10 +1,9 @@
 import { SignUp } from "@clerk/nextjs";
-import Link from "next/link";
 import { LifeBuoy } from "lucide-react";
 
 export default function SignUpPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-muted/30 p-4">
+    <div className="flex h-full flex-col items-center justify-center bg-muted/30 p-4">
       <div className="mb-6 flex items-center space-x-2">
         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">
           <LifeBuoy className="h-6 w-6" />
