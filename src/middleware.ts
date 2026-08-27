@@ -18,5 +18,6 @@ export const config = {
     "/((?!_next|.*\\..*).*)",
     "/",
     "/(api|trpc)(.*)",
+    "/__clerk/:path*",
   ],
 };
