@@ -5,7 +5,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./providers";
 import { NotificationBell } from "./notification-bell";
-import { RoleSwitcher } from "./role-switcher";
 import { Button } from "./ui/button";
 import {
   Ticket as TicketIcon,
@@ -104,11 +103,6 @@ export function Navbar() {
               <span>New Ticket</span>
             </Button>
           </Link>
-
-          {/* Persona / Role Switcher for seamless evaluation */}
-          <div className="hidden min-[430px]:block">
-            <RoleSwitcher />
-          </div>
 
           {/* Real-time In-App Notification Bell */}
           <NotificationBell />

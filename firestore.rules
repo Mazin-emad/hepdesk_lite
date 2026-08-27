@@ -1,47 +1,98 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Helper function to check if user is authenticated
+
     function isAuthenticated() {
       return request.auth != null;
     }
-    
-    // Helper function to get user document data
-    function getUserData() {
+
+    function hasUserDoc() {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function getCurrentUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    
-    // Role checkers
-    function isEmployee() {
-      return isAuthenticated() && getUserData().role == 'employee';
+
+    function isRequester() {
+      return isAuthenticated() && resource.data.requesterId == request.auth.uid;
     }
-    
-    function isStaff() {
-      return isAuthenticated() && (getUserData().role == 'staff' || getUserData().role == 'manager');
+
+    function isStaffOrManager() {
+      return hasUserDoc()
+        && (
+          getCurrentUserData().role == 'staff'
+          || getCurrentUserData().role == 'manager'
+        );
     }
-    
+
     function isManager() {
-      return isAuthenticated() && getUserData().role == 'manager';
+      return hasUserDoc() && getCurrentUserData().role == 'manager';
     }
-    
-    // Users collection
+
+    function changedKeys() {
+      return request.resource.data.diff(resource.data).affectedKeys();
+    }
+
+    function isCommentAppendByCaller() {
+      return changedKeys().hasOnly(['comments', 'updatedAt'])
+        && request.resource.data.comments is list
+        && resource.data.comments is list
+        && request.resource.data.comments.size() == resource.data.comments.size() + 1
+        && request.resource.data.comments[request.resource.data.comments.size() - 1].authorId == request.auth.uid;
+    }
+
+    function isPublicCommentAppendByRequester() {
+      return isCommentAppendByCaller()
+        && !(request.resource.data.comments[request.resource.data.comments.size() - 1].isInternal == true);
+    }
+
+    function isStatusOrAssignmentUpdate() {
+      return changedKeys().hasOnly(['status', 'updatedAt', 'stateHistory', 'ownerId', 'ownerName'])
+        && request.resource.data.stateHistory is list
+        && resource.data.stateHistory is list
+        && request.resource.data.stateHistory.size() == resource.data.stateHistory.size() + 1;
+    }
+
+    function isRequesterResolvedTransition() {
+      return changedKeys().hasOnly(['status', 'updatedAt', 'stateHistory'])
+        && resource.data.status == 'Resolved'
+        && request.resource.data.status in ['Closed', 'In Progress']
+        && request.resource.data.stateHistory is list
+        && resource.data.stateHistory is list
+        && request.resource.data.stateHistory.size() == resource.data.stateHistory.size() + 1;
+    }
+
+    function isSelfProfileUpdate(userId) {
+      return request.auth.uid == userId
+        && changedKeys().hasOnly(['name', 'email', 'updatedAt'])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    function isManagerProfileUpdate() {
+      return changedKeys().hasOnly(['role', 'name', 'email', 'disabled', 'updatedAt']);
+    }
+
     match /users/{userId} {
-      // User can read and edit own record, manager can read all user records for workload
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isManager() || isStaff());
-      allow create: if isAuthenticated() && request.auth.uid == userId;
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isManager());
-      allow delete: if isManager();
+      allow read: if isAuthenticated()
+        && (request.auth.uid == userId || isStaffOrManager());
+      allow create: if false;
+      allow update: if isAuthenticated()
+        && (
+          isSelfProfileUpdate(userId)
+          || (isManager() && isManagerProfileUpdate())
+        );
+      allow delete: if false;
     }
-    
-    // Tickets collection
+
     match /tickets/{ticketId} {
-      // Employee can read only their own tickets, staff and manager can read all tickets
       allow read: if isAuthenticated() && (
-        resource.data.requesterId == request.auth.uid || isStaff() || isManager()
+        resource.data.requesterId == request.auth.uid || isStaffOrManager()
       );
-      
-      // Any authenticated user can create a ticket with status 'New' and themselves as requester
+
       allow create: if isAuthenticated() &&
         request.resource.data.requesterId == request.auth.uid &&
         request.resource.data.status == 'New' &&
@@ -50,25 +101,37 @@ service cloud.firestore {
         request.resource.data.title.size() <= 120 &&
         request.resource.data.description is string &&
         request.resource.data.description.size() > 0 &&
-        request.resource.data.description.size() <= 2000;
-        
-      // Staff and Manager can update tickets (state transitions, assignment, etc.)
-      // Employees can only update if it's their own ticket and only to add comments/reopen
+        request.resource.data.description.size() <= 2000 &&
+        request.resource.data.ownerId == null &&
+        request.resource.data.ownerName == null;
+
       allow update: if isAuthenticated() && (
-        isStaff() || isManager() ||
-        (resource.data.requesterId == request.auth.uid)
+        (
+          isStaffOrManager()
+          && (isStatusOrAssignmentUpdate() || isCommentAppendByCaller())
+        )
+        || (
+          isRequester()
+          && (isRequesterResolvedTransition() || isPublicCommentAppendByRequester())
+        )
       );
-      
-      allow delete: if isManager();
+
+      allow delete: if false;
     }
-    
-    // Notifications collection
+
     match /notifications/{notificationId} {
-      // Users can only read and update (mark read) their own notifications
       allow read: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      allow update: if isAuthenticated() && resource.data.userId == request.auth.uid;
-      // System/Authenticated users can create notifications
-      allow create: if isAuthenticated();
+      allow update: if isAuthenticated()
+        && resource.data.userId == request.auth.uid
+        && changedKeys().hasOnly(['read'])
+        && request.resource.data.read == true;
+      allow create: if isStaffOrManager()
+        && request.resource.data.userId is string
+        && request.resource.data.ticketId is string
+        && request.resource.data.ticketTitle is string
+        && request.resource.data.type is string
+        && request.resource.data.message is string
+        && request.resource.data.read == false;
       allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
   }

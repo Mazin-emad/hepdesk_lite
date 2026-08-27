@@ -1,31 +1,39 @@
-"use client";
+﻿"use client";
 
 import React, { createContext, useContext, useEffect, useState } from "react";
+import { useAuth as useClerkAuth, useUser } from "@clerk/nextjs";
+import { signInWithCustomToken, signOut as signOutFirebase } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { UserProfile, UserRole } from "@/lib/types";
-import { MOCK_USERS } from "@/lib/mock-data";
-import { getUserProfile, syncUserProfile, updateUserRole } from "@/lib/firestore-service";
+import { updateUserRole } from "@/lib/firestore-service";
 
 interface AuthContextType {
   currentUser: UserProfile;
   setCurrentUser: (user: UserProfile) => void;
   setRole: (role: UserRole) => Promise<void>;
-  switchUserPersona: (uid: string) => void;
-  availablePersonas: UserProfile[];
   theme: "light" | "dark";
   toggleTheme: () => void;
+  signOut: () => Promise<void>;
 }
+
+const EMPTY_USER: UserProfile = {
+  uid: "",
+  name: "Guest",
+  email: "",
+  role: "employee",
+  createdAt: new Date().toISOString(),
+};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
-  const [currentUser, setCurrentUserState] = useState<UserProfile>(MOCK_USERS[0]);
-  const [availablePersonas, setAvailablePersonas] = useState<UserProfile[]>(MOCK_USERS);
+  const { isLoaded, isSignedIn, user: clerkUser } = useUser();
+  const { signOut: signOutClerk } = useClerkAuth();
+
+  const [currentUser, setCurrentUserState] = useState<UserProfile>(EMPTY_USER);
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    setMounted(true);
-    // Initialize theme from local storage or prefers-color-scheme
     const savedTheme = localStorage.getItem("helpdesk_theme") as "light" | "dark" | null;
     if (savedTheme) {
       setTheme(savedTheme);
@@ -36,17 +44,81 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
       setTheme("dark");
       document.documentElement.classList.add("dark");
     }
-
-    // Initialize active user persona from local storage
-    const savedUserId = localStorage.getItem("helpdesk_active_uid");
-    if (savedUserId) {
-      getUserProfile(savedUserId).then((profile) => {
-        if (profile) {
-          setCurrentUserState(profile);
-        }
-      });
-    }
   }, []);
+
+  useEffect(() => {
+    if (!isLoaded) {
+      return;
+    }
+
+    if (!isSignedIn || !clerkUser) {
+      setCurrentUserState(EMPTY_USER);
+      return;
+    }
+
+    const sync = async () => {
+      const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || "User";
+      const email = clerkUser.primaryEmailAddress?.emailAddress || "";
+      const response = await fetch("/api/sync-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, email }),
+      });
+
+      if (!response.ok) {
+        throw new Error("Unable to sync user profile");
+      }
+
+      const data = (await response.json()) as { profile: UserProfile };
+      const profile = data.profile;
+
+      setCurrentUserState(profile);
+    };
+
+    sync().catch((error) => {
+      console.error("Failed to sync Clerk user to Firestore profile:", error);
+      const fallback = {
+        uid: clerkUser.id,
+        name: [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || "User",
+        email: clerkUser.primaryEmailAddress?.emailAddress || "",
+        role: "employee" as const,
+        createdAt: new Date().toISOString(),
+      };
+      setCurrentUserState(fallback);
+    });
+  }, [clerkUser, isLoaded, isSignedIn]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn || !clerkUser) {
+      return;
+    }
+
+    let cancelled = false;
+
+    const connectFirebase = async () => {
+      const response = await fetch("/api/firebase-token", { method: "POST" });
+      if (!response.ok) {
+        throw new Error("Unable to mint Firebase custom token");
+      }
+
+      const { token } = await response.json();
+      if (cancelled) {
+        return;
+      }
+
+      await signInWithCustomToken(auth, token);
+    };
+
+    connectFirebase().catch((error) => {
+      console.error("Firebase custom token sync failed:", error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkUser?.id, isLoaded, isSignedIn]);
 
   const toggleTheme = () => {
     const nextTheme = theme === "light" ? "dark" : "light";
@@ -61,26 +133,27 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   const setCurrentUser = (user: UserProfile) => {
     setCurrentUserState(user);
-    if (typeof window !== "undefined") {
-      localStorage.setItem("helpdesk_active_uid", user.uid);
-    }
   };
 
   const setRole = async (role: UserRole) => {
+    if (!currentUser.uid) {
+      return;
+    }
+
     const updated = { ...currentUser, role };
     setCurrentUserState(updated);
     await updateUserRole(currentUser.uid, role);
-    // Refresh personas list
-    setAvailablePersonas((prev) =>
-      prev.map((u) => (u.uid === currentUser.uid ? updated : u))
-    );
   };
 
-  const switchUserPersona = (uid: string) => {
-    const user = availablePersonas.find((p) => p.uid === uid) || MOCK_USERS.find((p) => p.uid === uid);
-    if (user) {
-      setCurrentUser(user);
+  const signOut = async () => {
+    try {
+      await signOutFirebase(auth);
+    } catch (error) {
+      console.warn("Firebase sign-out was not available:", error);
     }
+
+    await signOutClerk();
+    setCurrentUserState(EMPTY_USER);
   };
 
   return (
@@ -89,10 +162,9 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
         currentUser,
         setCurrentUser,
         setRole,
-        switchUserPersona,
-        availablePersonas,
         theme,
         toggleTheme,
+        signOut,
       }}
     >
       <div className="min-h-screen bg-background text-foreground">

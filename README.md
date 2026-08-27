@@ -55,6 +55,13 @@ Copy `.env.example` to `.env.local` and provide your Clerk and Firebase project 
 cp .env.example .env.local
 ```
 
+For production, these keys are mandatory:
+- `CLERK_WEBHOOK_SECRET` (used by [src/app/api/clerk-webhook/route.ts](D:/work/fun/helpdesk.worktrees/footer-global-visibility/src/app/api/clerk-webhook/route.ts))
+- `FIREBASE_SERVICE_ACCOUNT_PATH` or `FIREBASE_SERVICE_ACCOUNT_JSON` (used by [src/lib/firebase-admin.ts](D:/work/fun/helpdesk.worktrees/footer-global-visibility/src/lib/firebase-admin.ts))
+
+Never commit the Firebase Admin service account JSON. The filename
+`helpdesk-lite-e7ceb-firebase-adminsdk-fbsvc-4d2764960e.json` is already ignored in [.gitignore](D:/work/fun/helpdesk.worktrees/footer-global-visibility/.gitignore).
+
 ### 4. Running the Development Server
 ```bash
 npm run dev
@@ -74,7 +81,17 @@ npm run build
 ---
 
 ## 🔒 Firestore Security Rules
-Rules are defined in [`firestore.rules`](file:///d:/work/fun/helpdesk/firestore.rules) and can be deployed using:
+Rules are defined in [firestore.rules](D:/work/fun/helpdesk.worktrees/footer-global-visibility/firestore.rules) and can be deployed using:
 ```bash
 npx firebase deploy --only firestore:rules
 ```
+
+## ✅ Production Readiness Checklist
+- Deploy updated rules from [firestore.rules](D:/work/fun/helpdesk.worktrees/footer-global-visibility/firestore.rules).
+- Configure Clerk webhook endpoint: `POST /api/clerk-webhook`.
+- Verify webhook signature enforcement by sending a signed Clerk test event.
+- Verify Firebase bridge token endpoint: `POST /api/firebase-token` returns a token only for authenticated Clerk sessions.
+- Confirm role boundaries:
+  - employee: own tickets + public comments + resolved close/reopen only
+  - staff/manager: queue transitions, assignment, and notification creation
+  - manager: role updates in `users` collection
