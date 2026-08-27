@@ -1,13 +1,15 @@
 "use client";
 
 import React from "react";
+import Image from "next/image";
 import Link from "next/link";
+import { UserButton } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
 import { useAuth } from "./providers";
 import { NotificationBell } from "./notification-bell";
 import { Button } from "./ui/button";
+import logo from "@/assets/images/helpdesk_lite_logo.svg";
 import {
-  Ticket as TicketIcon,
   PlusCircle,
   LayoutDashboard,
   Inbox,
@@ -18,7 +20,7 @@ import {
 
 export function Navbar() {
   const pathname = usePathname();
-  const { currentUser, theme, toggleTheme } = useAuth();
+  const { currentUser, theme, toggleTheme, signOut } = useAuth();
 
   const isManager = currentUser.role === "manager";
 
@@ -58,19 +60,17 @@ export function Navbar() {
           {/* Logo & Counter Sign */}
           <Link
             href="/dashboard"
-            className="flex items-center space-x-2 group select-none min-w-0"
+            className="group flex min-w-0 select-none items-center"
+            aria-label="HelpDesk Lite home"
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-xs bg-primary text-primary-foreground shadow-2xs">
-              <TicketIcon className="h-4 w-4" />
-            </div>
-            <div className="hidden min-[420px]:flex flex-col">
-              <span className="font-display font-bold text-sm lg:text-base tracking-tight text-foreground group-hover:text-primary transition-colors leading-tight">
-                HelpDesk Lite
-              </span>
-              <span className="text-[9px] lg:text-[10px] font-mono tracking-wide uppercase text-muted-foreground -mt-0.5">
-                Dispatch Counter
-              </span>
-            </div>
+            <Image
+              src={logo}
+              alt="HelpDesk Lite"
+              priority
+              width={220}
+              height={56}
+              className="h-8 w-auto object-contain sm:h-9"
+            />
           </Link>
 
           {/* Desktop Navigation */}
@@ -122,21 +122,25 @@ export function Navbar() {
             )}
           </Button>
 
-          {/* Active User Stamp Avatar */}
-          <div className="hidden min-[370px]:flex items-center space-x-2 pl-2 border-l border-border">
-            <div
-              className="flex h-7 w-7 items-center justify-center rounded-xs bg-primary/10 text-primary font-mono font-bold text-xs border border-primary/30"
-              title={`${currentUser.name} (${currentUser.role})`}
+          {/* Active User Profile */}
+          <div className="hidden min-[370px]:flex items-center border-l border-border pl-2">
+            <UserButton
+              afterSignOutUrl="/sign-in"
+              appearance={{
+                elements: {
+                  avatarBox: "h-8 w-8",
+                  userButtonPopoverCard: "shadow-xl border border-border",
+                },
+              }}
             >
-              {currentUser.name
-                ? currentUser.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")
-                    .slice(0, 2)
-                    .toUpperCase()
-                : "U"}
-            </div>
+              <UserButton.Action
+                label="Sign out"
+                labelIcon={<span aria-hidden="true">↩</span>}
+                onClick={async () => {
+                  await signOut();
+                }}
+              />
+            </UserButton>
           </div>
         </div>
       </div>
