@@ -5,7 +5,7 @@ import { useAuth as useClerkAuth, useUser } from "@clerk/nextjs";
 import { signInWithCustomToken, signOut as signOutFirebase } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { UserProfile, UserRole } from "@/lib/types";
-import { getUserProfile, syncUserProfile, updateUserRole } from "@/lib/firestore-service";
+import { updateUserRole } from "@/lib/firestore-service";
 
 interface AuthContextType {
   currentUser: UserProfile;
@@ -57,18 +57,22 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
     }
 
     const sync = async () => {
-      const uid = clerkUser.id;
       const name = [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") || "User";
       const email = clerkUser.primaryEmailAddress?.emailAddress || "";
+      const response = await fetch("/api/sync-user", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ name, email }),
+      });
 
-      const existing = await getUserProfile(uid);
-      const profile = existing ??
-        (await syncUserProfile({
-          uid,
-          name,
-          email,
-          role: "employee",
-        }));
+      if (!response.ok) {
+        throw new Error("Unable to sync user profile");
+      }
+
+      const data = (await response.json()) as { profile: UserProfile };
+      const profile = data.profile;
 
       setCurrentUserState(profile);
     };
