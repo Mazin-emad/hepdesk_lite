@@ -148,11 +148,16 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await signOutFirebase(auth);
+      if (auth.currentUser) {
+        console.warn("Firebase session still present after signOut attempt");
+      }
     } catch (error) {
       console.warn("Firebase sign-out was not available:", error);
     }
 
-    await signOutClerk();
+    await signOutClerk(() => {
+      setCurrentUserState(EMPTY_USER);
+    });
     setCurrentUserState(EMPTY_USER);
   };
 
